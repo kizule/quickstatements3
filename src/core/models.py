@@ -1134,6 +1134,12 @@ class BatchCommand(models.Model):
         return (
             self.entity_id() == "LAST" or self.operation == self.Operation.CREATE_ITEM
         )
+    
+    def has_references(self):
+        return bool(self.references())
+
+    def has_qualifiers(self):
+        return bool(self.qualifiers())
 
     # # -----------------
     # # LAST related methods
@@ -1576,27 +1582,55 @@ class BatchCommand(models.Model):
         It loops twice through the commands list.
         """
         ids = set()
-        entities = dict()
+        items = dict()
 
         for command in commands:
+            command.ids = set()
             id = command.entity_id()
             if id is not None and id != "LAST":
-                ids.add(command.entity_id())
+                command.ids.add(id)
+
+            id = command.prop
+            if id is not None and id != "":
+                command.ids.add(id)
+
+            id = command.value_value
+            if id is not None and command.value_type == "wikibase-entityid":
+                command.ids.add(id)
+
+            for qual in command.qualifiers():
+                id = qual["property"]
+                if id is not None:
+                    command.ids.add(id)
+                id = qual["value"]["value"]
+                if id is not None and isinstance(qual["value"], dict) and "type" in qual["value"] and qual["value"]["type"] == "wikibase-entityid":
+                    command.ids.add(id)
+
+            for ref in command.reference_parts():
+                id = ref["property"]
+                if id is not None:
+                    command.ids.add(id)
+                id = ref["value"]["value"]
+                if id is not None and isinstance(ref["value"], dict) and "type" in ref["value"] and ref["value"]["type"] == "wikibase-entityid":
+                    command.ids.add(id)
+            ids.update(command.ids)
         ids = list(ids)
 
+        # TODO: parallelize this
         batch_size = 50
         for i in range(0, len(ids), batch_size):
             batch_ids = ids[i : i + batch_size]
             api_json = client.get_multiple_labels(batch_ids, language)
-            entities.update(api_json.get("entities", {}))
+            items.update(api_json.get("entities", {}))
 
         for command in commands:
-            id = command.entity_id()
-            response_labels = entities.get(id, {}).get("labels", {})
-            label = response_labels.get(language, {}).get("value", None)
-            if not label:
-                label = response_labels.get("en", {}).get("value", None)
-            command.display_label = label
+            command.labels = dict()
+            for id in command.ids:
+                response_labels = items.get(id, {}).get("labels", {})
+                label = response_labels.get(language, {}).get("value", None)
+                if not label:
+                    label = response_labels.get("en", {}).get("value", None)
+                command.labels[id]=label
 
     # -----------------
     # Value type verification
