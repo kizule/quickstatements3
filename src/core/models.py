@@ -1593,7 +1593,6 @@ class BatchCommand(models.Model):
             if (id is not None and parser.is_valid_entity_id(str(id))):
                 id_set.add(id)
 
-
         def add_valid_meta_value(id_set, dict_id, id):
             if (
                 id is not None and 
@@ -1603,7 +1602,6 @@ class BatchCommand(models.Model):
                 parser.is_valid_entity_id(str(id))
                 ):
                 id_set.add(id)
-
 
         # Collects the IDs from the commands main entity, its property and value (when applicable),
         # its qualifiers and references; stores them in a per command set and global set, the first
