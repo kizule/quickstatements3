@@ -12,6 +12,6 @@ def has_multiple_wikibases():
 
 @register.filter
 def get(dictionary, key):
-    if type(key) is dict or not type(dictionary) is dict:
+    if type(key) is not str or not type(dictionary) is dict:
         return ""
     return dictionary.get(key, "")

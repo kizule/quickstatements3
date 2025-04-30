@@ -1573,46 +1573,56 @@ class BatchCommand(models.Model):
     @classmethod
     def load_labels(cls, client: Client, commands: List["BatchCommand"], language="en"):
         """
-        This commands loads labels in the command entity ids
-        in the `display_label` attribute.
+        This commands loads labels for wikibase entities
+        in a dict where the keys are the IDs and the
+        values are their matching labels.
 
-        If there is no label returned from the API, it
-        sets `display_label` as None.
+        If the label for that specific item is not 
+        returned from the API, it sets such as None.
 
-        It loops twice through the commands list.
+        It loops twice through the commands list and
+        runs in batches of 50 entities per API request.
         """
-        ids = set()
-        items = dict()
+        from core.parsers.v1 import BaseParser
 
+        ids = set()
+        entities = dict()
+        parser = BaseParser()
+        
+        def add_valid_item(id_set, id):
+            if (id is not None and parser.is_valid_entity_id(str(id))):
+                id_set.add(id)
+
+
+        def add_valid_meta_value(id_set, dict_id, id):
+            if (
+                id is not None and 
+                isinstance(dict_id["value"], dict) and
+                "type" in dict_id["value"] and
+                dict_id["value"]["type"] == "wikibase-entityid" and
+                parser.is_valid_entity_id(str(id))
+                ):
+                id_set.add(id)
+
+
+        # Collects the IDs from the commands main entity, its property and value (when applicable),
+        # its qualifiers and references; stores them in a per command set and global set, the first
+        # to be used for the command labeling and the second to be used for the API request.
         for command in commands:
             command.ids = set()
-            id = command.entity_id()
-            if id is not None and id != "LAST":
-                command.ids.add(id)
 
-            id = command.prop
-            if id is not None and id != "":
-                command.ids.add(id)
-
-            id = command.value_value
-            if id is not None and command.value_type == "wikibase-entityid":
-                command.ids.add(id)
+            add_valid_item(command.ids, command.entity_id())
+            add_valid_item(command.ids, command.prop)
+            add_valid_item(command.ids, command.value_value)
 
             for qual in command.qualifiers():
-                id = qual["property"]
-                if id is not None:
-                    command.ids.add(id)
-                id = qual["value"]["value"]
-                if id is not None and isinstance(qual["value"], dict) and "type" in qual["value"] and qual["value"]["type"] == "wikibase-entityid":
-                    command.ids.add(id)
+                add_valid_item(command.ids, qual["property"])
+                add_valid_meta_value(command.ids, qual, qual["value"]["value"])
 
             for ref in command.reference_parts():
-                id = ref["property"]
-                if id is not None:
-                    command.ids.add(id)
-                id = ref["value"]["value"]
-                if id is not None and isinstance(ref["value"], dict) and "type" in ref["value"] and ref["value"]["type"] == "wikibase-entityid":
-                    command.ids.add(id)
+                add_valid_item(command.ids, ref["property"])
+                add_valid_meta_value(command.ids, ref, ref["value"]["value"])                
+
             ids.update(command.ids)
         ids = list(ids)
 
@@ -1621,12 +1631,12 @@ class BatchCommand(models.Model):
         for i in range(0, len(ids), batch_size):
             batch_ids = ids[i : i + batch_size]
             api_json = client.get_multiple_labels(batch_ids, language)
-            items.update(api_json.get("entities", {}))
+            entities.update(api_json.get("entities", {}))
 
         for command in commands:
             command.labels = dict()
             for id in command.ids:
-                response_labels = items.get(id, {}).get("labels", {})
+                response_labels = entities.get(id, {}).get("labels", {})
                 label = response_labels.get(language, {}).get("value", None)
                 if not label:
                     label = response_labels.get("en", {}).get("value", None)
