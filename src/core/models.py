@@ -1135,12 +1135,6 @@ class BatchCommand(models.Model):
             self.entity_id() == "LAST" or self.operation == self.Operation.CREATE_ITEM
         )
 
-    def has_references(self):
-        return bool(self.references())
-
-    def has_qualifiers(self):
-        return bool(self.qualifiers())
-
     # # -----------------
     # # LAST related methods
     # # -----------------
