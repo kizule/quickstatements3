@@ -1134,7 +1134,7 @@ class BatchCommand(models.Model):
         return (
             self.entity_id() == "LAST" or self.operation == self.Operation.CREATE_ITEM
         )
-    
+
     def has_references(self):
         return bool(self.references())
 
@@ -1577,7 +1577,7 @@ class BatchCommand(models.Model):
         in a dict where the keys are the IDs and the
         values are their matching labels.
 
-        If the label for that specific item is not 
+        If the label for that specific item is not
         returned from the API, it sets such as None.
 
         It loops twice through the commands list and
@@ -1587,21 +1587,6 @@ class BatchCommand(models.Model):
 
         ids = set()
         entities = dict()
-        parser = BaseParser()
-        
-        def add_valid_item(id_set, id):
-            if (id is not None and parser.is_valid_entity_id(str(id))):
-                id_set.add(id)
-
-        def add_valid_meta_value(id_set, dict_id, id):
-            if (
-                id is not None and 
-                isinstance(dict_id["value"], dict) and
-                "type" in dict_id["value"] and
-                dict_id["value"]["type"] == "wikibase-entityid" and
-                parser.is_valid_entity_id(str(id))
-                ):
-                id_set.add(id)
 
         # Collects the IDs from the commands main entity, its property and value (when applicable),
         # its qualifiers and references; stores them in a per command set and global set, the first
@@ -1609,18 +1594,43 @@ class BatchCommand(models.Model):
         for command in commands:
             command.ids = set()
 
-            add_valid_item(command.ids, command.entity_id())
-            add_valid_item(command.ids, command.prop)
-            add_valid_item(command.ids, command.value_value)
+            id = command.entity_id()
+            if id is not None and id != "LAST":
+                command.ids.add(id)
+
+            id = command.prop
+            if id is not None and id != "":
+                command.ids.add(id)
+
+            id = command.value_value
+            if id is not None and command.value_type == "wikibase-entityid":
+                command.ids.add(id)
 
             for qual in command.qualifiers():
-                add_valid_item(command.ids, qual["property"])
-                add_valid_meta_value(command.ids, qual, qual["value"]["value"])
+                id = qual["property"]
+                if id is not None:
+                    command.ids.add(id)
+                id = qual["value"]["value"]
+                if (
+                    id is not None and
+                    isinstance(qual["value"], dict) and
+                    "type" in qual["value"] and
+                    qual["value"]["type"] == "wikibase-entityid"
+                ):
+                    command.ids.add(id)
 
             for ref in command.reference_parts():
-                add_valid_item(command.ids, ref["property"])
-                add_valid_meta_value(command.ids, ref, ref["value"]["value"])                
-
+                id = ref["property"]
+                if id is not None:
+                    command.ids.add(id)
+                id = ref["value"]["value"]
+                if (
+                    id is not None and
+                    isinstance(ref["value"], dict) and
+                    "type" in ref["value"] and
+                    ref["value"]["type"] == "wikibase-entityid"
+                ):
+                    command.ids.add(id)
             ids.update(command.ids)
         ids = list(ids)
 
